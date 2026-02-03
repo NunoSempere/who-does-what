@@ -277,23 +277,62 @@ What action would this actor take given their goals, powers, and what they know?
 func RunSimulationTurn(worldState WorldState, actors Actors, client *openai.Client) ([]ActorAction, WorldState, error) {
 	log.Printf("[RunSimulationTurn] Starting simulation turn with %d actors", len(actors.Actors))
 
-	var actions []ActorAction
+	// Process each actor in parallel
+	type actorResult struct {
+		action ActorAction
+		err    error
+		index  int
+	}
 
-	// Each actor observes and acts
-	for _, actor := range actors.Actors {
-		// Filter world state for this actor
-		actorView, err := FilterWorldStateForActor(worldState, actor, client)
-		if err != nil {
-			return nil, worldState, fmt.Errorf("failed to filter world state for %s: %v", actor.Name, err)
+	results := make(chan actorResult, len(actors.Actors))
+	var wg sync.WaitGroup
+
+	// Each actor observes and acts in parallel
+	for i, actor := range actors.Actors {
+		wg.Add(1)
+		go func(idx int, act Actor) {
+			defer wg.Done()
+
+			// Filter world state for this actor
+			actorView, err := FilterWorldStateForActor(worldState, act, client)
+			if err != nil {
+				results <- actorResult{
+					err:   fmt.Errorf("failed to filter world state for %s: %v", act.Name, err),
+					index: idx,
+				}
+				return
+			}
+
+			// Actor takes action based on their view
+			action, err := ActorTakesAction(act, actorView, client)
+			if err != nil {
+				results <- actorResult{
+					err:   fmt.Errorf("failed to get action for %s: %v", act.Name, err),
+					index: idx,
+				}
+				return
+			}
+
+			results <- actorResult{
+				action: action,
+				index:  idx,
+			}
+		}(i, actor)
+	}
+
+	// Wait for all goroutines to complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results
+	actions := make([]ActorAction, len(actors.Actors))
+	for result := range results {
+		if result.err != nil {
+			return nil, worldState, result.err
 		}
-
-		// Actor takes action based on their view
-		action, err := ActorTakesAction(actor, actorView, client)
-		if err != nil {
-			return nil, worldState, fmt.Errorf("failed to get action for %s: %v", actor.Name, err)
-		}
-
-		actions = append(actions, action)
+		actions[result.index] = result.action
 	}
 
 	// Update world state based on actions
