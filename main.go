@@ -38,6 +38,11 @@ type ActorAction struct {
 	Reasoning string `json:"reasoning"`
 }
 
+type SummarizationAnswer struct {
+	Answer string `json:"answer"`
+	YesNo bool `json:"yes_no"`
+}
+
 func GetActors(situation_description string, client *openai.Client) (Actors, error){
 	prompt := `Provide a list of the relevant actors and their goals as a JSON object \
 	{
@@ -394,17 +399,17 @@ Update the world state to reflect the consequences of these actions. Return the 
 }
 
 // AnswerSummarizationQuestion answers a specific question about the final state of the simulation
-func AnswerSummarizationQuestion(question string, worldState WorldState, allActions [][]ActorAction, client *openai.Client) (string, error) {
+func AnswerSummarizationQuestion(question string, worldState WorldState, allActions [][]ActorAction, client *openai.Client) (string, bool, error) {
 	log.Printf("[AnswerSummarizationQuestion] Answering question: %s", question)
 
 	worldStateJSON, err := json.Marshal(worldState)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal world state: %v", err)
+		return "", false, fmt.Errorf("failed to marshal world state: %v", err)
 	}
 
 	allActionsJSON, err := json.Marshal(allActions)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal all actions: %v", err)
+		return "", false, fmt.Errorf("failed to marshal all actions: %v", err)
 	}
 
 	prompt := fmt.Sprintf(`Given this final world state: %s
@@ -413,15 +418,34 @@ And this history of all actions taken across turns: %s
 
 Please answer this question: %s
 
-Provide a clear answer, referencing specific events and actions from the simulation.`, string(worldStateJSON), string(allActionsJSON), question)
+Provide a JSON response with:
+- answer: a clear detailed answer, referencing specific events and actions from the simulation
+- yes_no: a boolean (true/false) indicating the yes/no answer to the question`, string(worldStateJSON), string(allActionsJSON), question)
 
-	answer, err := fetchOpenAIAnswer(OpenAIRequest{prompt: prompt, model: GPT5, client: client})
+	var summarizationAnswer SummarizationAnswer
+	schema, err := jsonschema.GenerateSchemaForType(summarizationAnswer)
 	if err != nil {
-		return "", err
+		return "", false, fmt.Errorf("schema generation failed: %v", err)
+	}
+
+	openai_schema := openai.ChatCompletionResponseFormatJSONSchema{
+		Name:   "SummarizationAnswer",
+		Schema: schema,
+		Strict: true,
+	}
+
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
+	if err != nil {
+		return "", false, err
+	}
+
+	err = json.Unmarshal([]byte(openai_json), &summarizationAnswer)
+	if err != nil {
+		return "", false, err
 	}
 
 	log.Printf("[AnswerSummarizationQuestion] Question answered successfully")
-	return answer, nil
+	return summarizationAnswer.Answer, summarizationAnswer.YesNo, nil
 }
 
 func main(){
@@ -487,11 +511,12 @@ func main(){
 	// Step 5: Answer summarization question
 	fmt.Println("\n=== STEP 5: Final Summarization ===")
 	question := "Did the Bank of Japan raise rates, potentially unwinding the Japanese carry trade?"
-	answer, err := AnswerSummarizationQuestion(question, worldState, allActions, client)
+	answer, yesNo, err := AnswerSummarizationQuestion(question, worldState, allActions, client)
 	if err != nil {
 		log.Fatalf("Failed to answer summarization question: %v", err)
 	}
 	fmt.Printf("\nQuestion: %s\n", question)
+	fmt.Printf("Yes/No: %t\n", yesNo)
 	fmt.Printf("Answer: %s\n", answer)
 }
 
