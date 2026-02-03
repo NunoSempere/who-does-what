@@ -72,8 +72,8 @@ func GetActors(situation_description string, client *openai.Client) (Actors, err
 		Schema: schema,
 		Strict: true,
 	}
-	log.Printf("[GetActors] Making OpenAI API call with model: %s", GPT5)
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
+	log.Printf("[GetActors] Making OpenAI API call with model: %s", GPT5_2)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
 	if err != nil {
 		log.Printf("[GetActors] OpenAI API call failed: %v", err)
 		return Actors{}, err
@@ -119,7 +119,7 @@ Please adjust the actors (their goals, powers, or add/remove actors) based on th
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
 	if err != nil {
 		return Actors{}, err
 	}
@@ -164,7 +164,7 @@ Format: {"events": ["event 1", "event 2", ...], "description": "overall descript
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
 	if err != nil {
 		return WorldState{}, err
 	}
@@ -215,7 +215,7 @@ Only include information the actor would actually have access to. Some events mi
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
 	if err != nil {
 		return ActorView{}, err
 	}
@@ -264,7 +264,7 @@ What action would this actor take given their goals, powers, and what they know?
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
 	if err != nil {
 		return ActorAction{}, err
 	}
@@ -389,7 +389,7 @@ Update the world state to reflect the consequences of these actions. Return the 
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
 	if err != nil {
 		return WorldState{}, err
 	}
@@ -439,7 +439,7 @@ Provide a JSON response with:
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
 	if err != nil {
 		return "", false, err
 	}
@@ -660,8 +660,28 @@ func runInteractiveSimulation(client *openai.Client) error {
 	return nil
 }
 
-func runMultipleSimulations(situationDescription string, question string, numTurns int, numSimulations int, client *openai.Client) error {
+func runMultipleSimulations(numSimulations int, client *openai.Client) error {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Get scenario from user
+	fmt.Print("\nEnter the scenario description: ")
+	situationDescription, _ := reader.ReadString('\n')
+	situationDescription = strings.TrimSpace(situationDescription)
+
+	// Get number of turns
+	fmt.Print("Enter number of turns to simulate: ")
+	var numTurns int
+	fmt.Scanf("%d\n", &numTurns)
+
+	// Get summarization question
+	fmt.Print("Enter the question to answer at the end: ")
+	question, _ := reader.ReadString('\n')
+	question = strings.TrimSpace(question)
+
 	fmt.Printf("\n=== Running %d Simulations ===\n", numSimulations)
+	fmt.Printf("Scenario: %s\n", situationDescription)
+	fmt.Printf("Turns: %d\n", numTurns)
+	fmt.Printf("Question: %s\n", question)
 
 	results := make([]SimulationResult, numSimulations)
 	yesCount := 0
@@ -707,6 +727,10 @@ func main() {
 	// Create OpenAI client once for reuse
 	client := openai.NewClient(openaiToken)
 
+	if *interactive && *numSimulations > 0 {
+		log.Fatalf("Error: --interactive and --num-simulations flags cannot be used together")
+	}
+
 	if *interactive {
 		// Run in interactive mode
 		if err := runInteractiveSimulation(client); err != nil {
@@ -714,11 +738,7 @@ func main() {
 		}
 	} else if *numSimulations > 0 {
 		// Run multiple simulations
-		situationDescription := "The Bank of Japan is considering what to do about rates. I am curious about how to balance the central bank of Japan changing rates with the needs of the Japanese people, the PM, but also possible external pressure to not unwind the Japanese carry trade."
-		question := "Did the Bank of Japan raise rates, potentially unwinding the Japanese carry trade?"
-		numTurns := 2
-
-		if err := runMultipleSimulations(situationDescription, question, numTurns, *numSimulations, client); err != nil {
+		if err := runMultipleSimulations(*numSimulations, client); err != nil {
 			log.Fatalf("Multiple simulations failed: %v", err)
 		}
 	} else {

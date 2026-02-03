@@ -49,9 +49,20 @@ Run multiple simulations to get aggregate statistics:
 ```
 
 This will:
-1. Run N independent simulations with the same scenario
-2. Collect yes/no answers to the summarization question
-3. Display aggregate statistics (percentage of yes/no outcomes)
+1. Prompt for scenario description, number of turns, and question
+2. Run N independent simulations with the same scenario
+3. Collect yes/no answers to the summarization question
+4. Display aggregate statistics (percentage of yes/no outcomes)
+
+**Note:** In this mode, actors and actions are NOT saved to files and you cannot edit them between runs. This mode is designed for statistical analysis, not interactive editing.
+
+## Important Notes
+
+**The `--interactive` and `--num-simulations` flags cannot be used together.** They represent different workflows:
+- `--interactive`: Single simulation with full file editing capabilities
+- `--num-simulations`: Multiple automated simulations for statistical analysis
+
+Using both flags will result in an error.
 
 ## Architecture
 
@@ -84,12 +95,14 @@ The simulation follows these steps:
 ```bash
 ./who-does-what --interactive
 # Follow the prompts to define your scenario
+# Edit actor files and review turn data
 ```
 
 ### Statistical analysis
 ```bash
 ./who-does-what --num-simulations 100
-# Get percentage breakdown of outcomes across 100 simulations
+# Enter your scenario, turns, and question when prompted
+# Get percentage breakdown of outcomes across 100 automated simulations
 ```
 
 ## Configuration

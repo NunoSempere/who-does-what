@@ -134,7 +134,9 @@ session_<pid>/
 
 ### Multiple Simulations Mode (`--num-simulations N`)
 Runs N independent simulations with the same scenario and aggregates results:
-- Each simulation runs independently
+- User is prompted for scenario, number of turns, and question
+- Each simulation runs independently with the same parameters
+- Actors and actions are NOT saved to files (no editing capability)
 - Yes/No answers are collected
 - Aggregate statistics are displayed (percentage breakdown)
 - Useful for understanding probability distributions of outcomes
@@ -148,6 +150,8 @@ Yes count: 73
 No count: 27
 Yes percentage: 73.0%
 ```
+
+**Note:** The `--interactive` and `--num-simulations` flags are mutually exclusive and cannot be used together.
 
 ## Design Principles
 

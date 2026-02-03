@@ -15,6 +15,7 @@ var GPT4_turbo string = "gpt-4-turbo"
 var GPT4_o_mini string = "gpt-4o-mini"
 var GPT5_mini string = "gpt-5-mini"
 var GPT5 string = "gpt-5"
+var GPT5_2 string = "gpt-5.2"
 
 type OpenAIRequest struct {
 	prompt string
