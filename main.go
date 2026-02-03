@@ -7,6 +7,11 @@ import (
 	"fmt"
 	"encoding/json"
 	"sync"
+	"flag"
+	"bufio"
+	"strings"
+	"path/filepath"
+	"io/ioutil"
 	openai "github.com/sashabaranov/go-openai"
 	jsonschema "github.com/sashabaranov/go-openai/jsonschema"
 )
@@ -448,50 +453,40 @@ Provide a JSON response with:
 	return summarizationAnswer.Answer, summarizationAnswer.YesNo, nil
 }
 
-func main(){
+type SimulationResult struct {
+	Question string
+	YesNo    bool
+	Answer   string
+}
 
-	if err := godotenv.Load(".env"); err != nil {
-		log.Printf("Warning: Error loading .env file: %v", err)
-	}
-	openaiToken := os.Getenv("OPENAI_API_KEY")
-
-	// Create OpenAI client once for reuse
-	client := openai.NewClient(openaiToken)
-
-	situation_description := "The Bank of Japan is considering what to do about rates. I am curious about how to balance the central bank of Japan changing rates with the needs of the Japanese people, the PM, but also possible external pressure to not unwind the Japanese carry trade."
-
+func runSingleSimulation(situationDescription string, question string, numTurns int, client *openai.Client) (SimulationResult, error) {
 	// Step 1: Get initial actors
-	fmt.Println("\n=== STEP 1: Generating Actors ===")
-	actors, err := GetActors(situation_description, client)
+	fmt.Println("\n=== Generating Actors ===")
+	actors, err := GetActors(situationDescription, client)
 	if err != nil {
-		log.Fatalf("Failed to get actors: %v", err)
+		return SimulationResult{}, fmt.Errorf("failed to get actors: %v", err)
 	}
 	pretty_actors, _ := json.MarshalIndent(actors, "", "  ")
 	fmt.Printf("%v\n", string(pretty_actors))
 
-	// Step 2: Optionally adjust actors based on external information (skipping for MVP demo)
-	// external_info := "The US Federal Reserve has expressed concerns about global financial stability"
-	// actors, _ = AdjustActors(actors, external_info, client)
-
-	// Step 3: Summarize initial world state
-	fmt.Println("\n=== STEP 2: Initial World State ===")
-	worldState, err := SummarizeWorldState(situation_description, actors, client)
+	// Step 2: Summarize initial world state
+	fmt.Println("\n=== Initial World State ===")
+	worldState, err := SummarizeWorldState(situationDescription, actors, client)
 	if err != nil {
-		log.Fatalf("Failed to summarize world state: %v", err)
+		return SimulationResult{}, fmt.Errorf("failed to summarize world state: %v", err)
 	}
 	pretty_world, _ := json.MarshalIndent(worldState, "", "  ")
 	fmt.Printf("%v\n", string(pretty_world))
 
-	// Step 4: Run simulation turns
-	numTurns := 2
+	// Step 3: Run simulation turns
 	var allActions [][]ActorAction
 
 	for turn := 1; turn <= numTurns; turn++ {
-		fmt.Printf("\n=== STEP 3.%d: Simulation Turn %d ===\n", turn+2, turn)
+		fmt.Printf("\n=== Simulation Turn %d ===\n", turn)
 
 		actions, newWorldState, err := RunSimulationTurn(worldState, actors, client)
 		if err != nil {
-			log.Fatalf("Failed to run simulation turn %d: %v", turn, err)
+			return SimulationResult{}, fmt.Errorf("failed to run simulation turn %d: %v", turn, err)
 		}
 
 		worldState = newWorldState
@@ -508,15 +503,234 @@ func main(){
 		fmt.Printf("%v\n", string(pretty_world))
 	}
 
-	// Step 5: Answer summarization question
-	fmt.Println("\n=== STEP 5: Final Summarization ===")
-	question := "Did the Bank of Japan raise rates, potentially unwinding the Japanese carry trade?"
+	// Step 4: Answer summarization question
+	fmt.Println("\n=== Final Summarization ===")
 	answer, yesNo, err := AnswerSummarizationQuestion(question, worldState, allActions, client)
 	if err != nil {
-		log.Fatalf("Failed to answer summarization question: %v", err)
+		return SimulationResult{}, fmt.Errorf("failed to answer summarization question: %v", err)
 	}
 	fmt.Printf("\nQuestion: %s\n", question)
 	fmt.Printf("Yes/No: %t\n", yesNo)
 	fmt.Printf("Answer: %s\n", answer)
+
+	return SimulationResult{
+		Question: question,
+		YesNo:    yesNo,
+		Answer:   answer,
+	}, nil
+}
+
+func runInteractiveSimulation(client *openai.Client) error {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Get scenario from user
+	fmt.Print("\nEnter the scenario description: ")
+	situationDescription, _ := reader.ReadString('\n')
+	situationDescription = strings.TrimSpace(situationDescription)
+
+	// Get number of turns
+	fmt.Print("Enter number of turns to simulate: ")
+	var numTurns int
+	fmt.Scanf("%d\n", &numTurns)
+
+	// Get summarization question
+	fmt.Print("Enter the question to answer at the end: ")
+	question, _ := reader.ReadString('\n')
+	question = strings.TrimSpace(question)
+
+	// Create session directory
+	sessionDir := fmt.Sprintf("session_%d", os.Getpid())
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		return fmt.Errorf("failed to create session directory: %v", err)
+	}
+	fmt.Printf("\nSession directory: %s\n", sessionDir)
+
+	// Step 1: Get and save actors
+	fmt.Println("\n=== Generating Actors ===")
+	actors, err := GetActors(situationDescription, client)
+	if err != nil {
+		return fmt.Errorf("failed to get actors: %v", err)
+	}
+
+	// Save actors to files
+	actorsDir := filepath.Join(sessionDir, "actors")
+	if err := os.MkdirAll(actorsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create actors directory: %v", err)
+	}
+
+	for i, actor := range actors.Actors {
+		actorJSON, _ := json.MarshalIndent(actor, "", "  ")
+		actorFile := filepath.Join(actorsDir, fmt.Sprintf("actor_%d_%s.json", i+1, strings.ReplaceAll(actor.Name, " ", "_")))
+		if err := ioutil.WriteFile(actorFile, actorJSON, 0644); err != nil {
+			return fmt.Errorf("failed to write actor file: %v", err)
+		}
+	}
+
+	fmt.Printf("\nActors saved to %s\n", actorsDir)
+	fmt.Print("You can now edit the actor files. Press Enter when ready to continue...")
+	reader.ReadString('\n')
+
+	// Reload actors from files
+	files, err := ioutil.ReadDir(actorsDir)
+	if err != nil {
+		return fmt.Errorf("failed to read actors directory: %v", err)
+	}
+
+	actors.Actors = []Actor{}
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			actorJSON, err := ioutil.ReadFile(filepath.Join(actorsDir, file.Name()))
+			if err != nil {
+				return fmt.Errorf("failed to read actor file: %v", err)
+			}
+			var actor Actor
+			if err := json.Unmarshal(actorJSON, &actor); err != nil {
+				return fmt.Errorf("failed to unmarshal actor: %v", err)
+			}
+			actors.Actors = append(actors.Actors, actor)
+		}
+	}
+
+	fmt.Printf("\nReloaded %d actors\n", len(actors.Actors))
+
+	// Step 2: Summarize initial world state
+	fmt.Println("\n=== Initial World State ===")
+	worldState, err := SummarizeWorldState(situationDescription, actors, client)
+	if err != nil {
+		return fmt.Errorf("failed to summarize world state: %v", err)
+	}
+
+	// Step 3: Run simulation turns
+	var allActions [][]ActorAction
+
+	for turn := 1; turn <= numTurns; turn++ {
+		turnDir := filepath.Join(sessionDir, fmt.Sprintf("turn_%d", turn))
+		if err := os.MkdirAll(turnDir, 0755); err != nil {
+			return fmt.Errorf("failed to create turn directory: %v", err)
+		}
+
+		fmt.Printf("\n=== Simulation Turn %d ===\n", turn)
+
+		actions, newWorldState, err := RunSimulationTurn(worldState, actors, client)
+		if err != nil {
+			return fmt.Errorf("failed to run simulation turn %d: %v", turn, err)
+		}
+
+		worldState = newWorldState
+		allActions = append(allActions, actions)
+
+		// Save turn data to files
+		for i, action := range actions {
+			actionJSON, _ := json.MarshalIndent(action, "", "  ")
+			actionFile := filepath.Join(turnDir, fmt.Sprintf("action_%d_%s.json", i+1, strings.ReplaceAll(action.ActorName, " ", "_")))
+			ioutil.WriteFile(actionFile, actionJSON, 0644)
+		}
+
+		worldStateJSON, _ := json.MarshalIndent(worldState, "", "  ")
+		worldStateFile := filepath.Join(turnDir, "world_state.json")
+		ioutil.WriteFile(worldStateFile, worldStateJSON, 0644)
+
+		fmt.Printf("\nTurn %d data saved to %s\n", turn, turnDir)
+		fmt.Print("Press Enter to continue to next turn...")
+		reader.ReadString('\n')
+	}
+
+	// Step 4: Answer summarization question
+	fmt.Println("\n=== Final Summarization ===")
+	answer, yesNo, err := AnswerSummarizationQuestion(question, worldState, allActions, client)
+	if err != nil {
+		return fmt.Errorf("failed to answer summarization question: %v", err)
+	}
+
+	result := SimulationResult{
+		Question: question,
+		YesNo:    yesNo,
+		Answer:   answer,
+	}
+
+	resultJSON, _ := json.MarshalIndent(result, "", "  ")
+	resultFile := filepath.Join(sessionDir, "final_result.json")
+	ioutil.WriteFile(resultFile, resultJSON, 0644)
+
+	fmt.Printf("\nQuestion: %s\n", question)
+	fmt.Printf("Yes/No: %t\n", yesNo)
+	fmt.Printf("Answer: %s\n", answer)
+	fmt.Printf("\nFinal result saved to %s\n", resultFile)
+
+	return nil
+}
+
+func runMultipleSimulations(situationDescription string, question string, numTurns int, numSimulations int, client *openai.Client) error {
+	fmt.Printf("\n=== Running %d Simulations ===\n", numSimulations)
+
+	results := make([]SimulationResult, numSimulations)
+	yesCount := 0
+
+	for i := 0; i < numSimulations; i++ {
+		fmt.Printf("\n\n========== SIMULATION %d/%d ==========\n", i+1, numSimulations)
+
+		result, err := runSingleSimulation(situationDescription, question, numTurns, client)
+		if err != nil {
+			return fmt.Errorf("simulation %d failed: %v", i+1, err)
+		}
+
+		results[i] = result
+		if result.YesNo {
+			yesCount++
+		}
+
+		fmt.Printf("\n========== END SIMULATION %d/%d ==========\n", i+1, numSimulations)
+	}
+
+	// Aggregate results
+	fmt.Printf("\n\n=== AGGREGATE RESULTS ===\n")
+	fmt.Printf("Question: %s\n", question)
+	fmt.Printf("Total simulations: %d\n", numSimulations)
+	fmt.Printf("Yes count: %d\n", yesCount)
+	fmt.Printf("No count: %d\n", numSimulations-yesCount)
+	fmt.Printf("Yes percentage: %.1f%%\n", float64(yesCount)/float64(numSimulations)*100)
+
+	return nil
+}
+
+func main() {
+	// Parse command-line flags
+	interactive := flag.Bool("interactive", false, "Run in interactive mode")
+	numSimulations := flag.Int("num-simulations", 0, "Run multiple simulations and aggregate results")
+	flag.Parse()
+
+	if err := godotenv.Load(".env"); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+	}
+	openaiToken := os.Getenv("OPENAI_API_KEY")
+
+	// Create OpenAI client once for reuse
+	client := openai.NewClient(openaiToken)
+
+	if *interactive {
+		// Run in interactive mode
+		if err := runInteractiveSimulation(client); err != nil {
+			log.Fatalf("Interactive simulation failed: %v", err)
+		}
+	} else if *numSimulations > 0 {
+		// Run multiple simulations
+		situationDescription := "The Bank of Japan is considering what to do about rates. I am curious about how to balance the central bank of Japan changing rates with the needs of the Japanese people, the PM, but also possible external pressure to not unwind the Japanese carry trade."
+		question := "Did the Bank of Japan raise rates, potentially unwinding the Japanese carry trade?"
+		numTurns := 2
+
+		if err := runMultipleSimulations(situationDescription, question, numTurns, *numSimulations, client); err != nil {
+			log.Fatalf("Multiple simulations failed: %v", err)
+		}
+	} else {
+		// Run single simulation with default scenario
+		situationDescription := "The Bank of Japan is considering what to do about rates. I am curious about how to balance the central bank of Japan changing rates with the needs of the Japanese people, the PM, but also possible external pressure to not unwind the Japanese carry trade."
+		question := "Did the Bank of Japan raise rates, potentially unwinding the Japanese carry trade?"
+		numTurns := 2
+
+		_, err := runSingleSimulation(situationDescription, question, numTurns, client)
+		if err != nil {
+			log.Fatalf("Simulation failed: %v", err)
+		}
+	}
 }
 
