@@ -10,6 +10,8 @@ import (
 	jsonschema "github.com/sashabaranov/go-openai/jsonschema"
 )
 
+/*
+
 type Actor struct {
 	name string
 	goals string
@@ -72,6 +74,62 @@ func main(){
 
   situation_description := "The Bank of Japan is considering what to do about rates"
 	if actors, err := GetActors(situation_description, openaiToken); err == nil {
+		fmt.Printf("%v", actors)
+
+	}
+}
+
+*/
+
+type SummaryBox struct {
+	Summary string  `json:"summary"`
+	Error   *string `json:"error"`
+}
+
+func Summarize(text string, token string) (string, error) {
+	prompt := "The json API endpoint returns a {summary, error} object, like {summary: \"The article is about xyz\", error: null}. The summary contains, as a string, first a general summary of the contents of the article article in two paragraphs or less, and then an outline with the most salient, new and informative facts in an additional paragraph. The summary just states the contents of the article, and doesn't say \"The article says\" or similar introductions. For example, given the following article\n\n<INPUT>"
+	prompt += text + "\n\n</INPUT>\n\nThe output is as follows (as a reminder, the json API endpoint returns a {summary, error} object, like {summary: \"The article is about xyz\", error: null}. The summary contains, as a string, first a general summary of the article in two paragraphs or less, and then an outline outlines the most salient, new and informative facts in an additional paragraph):"
+	prompt += "<INPUT>" + text + "</INPUT>"
+
+	var summary_box SummaryBox
+	schema, err := jsonschema.GenerateSchemaForType(summary_box)
+	if err != nil {
+		log.Fatalf("GenerateSchemaForType error: %v", err)
+	}
+	openai_schema := openai.ChatCompletionResponseFormatJSONSchema{
+		Name:   "Summary",
+		Schema: schema,
+		Strict: true,
+	}
+	summary_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_mini, token: token}, openai_schema)
+	if err != nil {
+		return "", err
+	}
+	err = json.Unmarshal([]byte(summary_json), &summary_box)
+	if err != nil {
+		log.Printf("Error unmarshalling json: %v", err)
+		log.Printf("String was: %v", summary_json)
+		return "", err
+	}
+	if summary_box.Error != nil && (*summary_box.Error) != "" && (*summary_box.Error) != "null" {
+		log.Printf("OpenAI json error field is not empty: %v", err)
+		log.Printf("OpenAI answer: %v", summary_json)
+		return "", nil
+	}
+	summary := summary_box.Summary
+	return summary, nil
+}
+
+
+func main(){
+
+	if err := godotenv.Load(".env"); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+	}
+  openaiToken := os.Getenv("OPENAI_API_KEY")
+
+  situation_description := "The Bank of Japan is considering what to do about rates"
+	if actors, err := Summarize(situation_description, openaiToken); err == nil {
 		fmt.Printf("%v", actors)
 
 	}
