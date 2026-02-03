@@ -10,6 +10,12 @@ A scenario simulation tool that creates actors with goals and powers, simulates 
 go build -o who-does-what
 ```
 
+## Built with
+
+- Golang
+- Claude Code
+- OpenAI API
+
 ## Usage
 
 ```
