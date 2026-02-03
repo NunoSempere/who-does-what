@@ -6,6 +6,7 @@ import (
 	"os"
 	"fmt"
 	"encoding/json"
+	"sync"
 	openai "github.com/sashabaranov/go-openai"
 	jsonschema "github.com/sashabaranov/go-openai/jsonschema"
 )
@@ -37,7 +38,7 @@ type ActorAction struct {
 	Reasoning string `json:"reasoning"`
 }
 
-func GetActors(situation_description string, token string) (Actors, error){
+func GetActors(situation_description string, client *openai.Client) (Actors, error){
 	prompt := `Provide a list of the relevant actors and their goals as a JSON object \
 	{
 		actors: [
@@ -62,7 +63,7 @@ func GetActors(situation_description string, token string) (Actors, error){
 		Strict: true,
 	}
 	log.Printf("[GetActors] Making OpenAI API call with model: %s", GPT5)
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, token: token}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
 	if err != nil {
 		log.Printf("[GetActors] OpenAI API call failed: %v", err)
 		return Actors{}, err
@@ -82,7 +83,7 @@ func GetActors(situation_description string, token string) (Actors, error){
 }
 
 // AdjustActors takes existing actors and adjusts them based on external information
-func AdjustActors(actors Actors, external_info string, token string) (Actors, error) {
+func AdjustActors(actors Actors, external_info string, client *openai.Client) (Actors, error) {
 	log.Printf("[AdjustActors] Adjusting actors based on external information")
 
 	actorsJSON, err := json.Marshal(actors)
@@ -108,7 +109,7 @@ Please adjust the actors (their goals, powers, or add/remove actors) based on th
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, token: token}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
 	if err != nil {
 		return Actors{}, err
 	}
@@ -123,7 +124,7 @@ Please adjust the actors (their goals, powers, or add/remove actors) based on th
 }
 
 // SummarizeWorldState creates a comprehensive summary of the current state of the world
-func SummarizeWorldState(situation_description string, actors Actors, token string) (WorldState, error) {
+func SummarizeWorldState(situation_description string, actors Actors, client *openai.Client) (WorldState, error) {
 	log.Printf("[SummarizeWorldState] Creating world state summary")
 
 	actorsJSON, err := json.Marshal(actors)
@@ -153,7 +154,7 @@ Format: {"events": ["event 1", "event 2", ...], "description": "overall descript
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, token: token}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
 	if err != nil {
 		return WorldState{}, err
 	}
@@ -169,7 +170,7 @@ Format: {"events": ["event 1", "event 2", ...], "description": "overall descript
 
 // FilterWorldStateForActor takes the world state and an actor, and returns only the information
 // that the actor would realistically know based on their position and powers
-func FilterWorldStateForActor(worldState WorldState, actor Actor, token string) (ActorView, error) {
+func FilterWorldStateForActor(worldState WorldState, actor Actor, client *openai.Client) (ActorView, error) {
 	log.Printf("[FilterWorldStateForActor] Filtering world state for actor: %s", actor.Name)
 
 	worldStateJSON, err := json.Marshal(worldState)
@@ -204,7 +205,7 @@ Only include information the actor would actually have access to. Some events mi
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, token: token}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
 	if err != nil {
 		return ActorView{}, err
 	}
@@ -219,7 +220,7 @@ Only include information the actor would actually have access to. Some events mi
 }
 
 // ActorTakesAction has the actor decide what action to take based on their view of the world
-func ActorTakesAction(actor Actor, actorView ActorView, token string) (ActorAction, error) {
+func ActorTakesAction(actor Actor, actorView ActorView, client *openai.Client) (ActorAction, error) {
 	log.Printf("[ActorTakesAction] Getting action for actor: %s", actor.Name)
 
 	actorJSON, err := json.Marshal(actor)
@@ -253,7 +254,7 @@ What action would this actor take given their goals, powers, and what they know?
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, token: token}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
 	if err != nil {
 		return ActorAction{}, err
 	}
@@ -264,11 +265,16 @@ What action would this actor take given their goals, powers, and what they know?
 	}
 
 	log.Printf("[ActorTakesAction] Action determined for %s", actor.Name)
+
+	// Print the action taken
+	fmt.Printf("\n%s takes action: %s\n", actorAction.ActorName, actorAction.Action)
+	fmt.Printf("Reasoning: %s\n", actorAction.Reasoning)
+
 	return actorAction, nil
 }
 
 // RunSimulationTurn runs one turn of the simulation where each actor observes and acts
-func RunSimulationTurn(worldState WorldState, actors Actors, token string) ([]ActorAction, WorldState, error) {
+func RunSimulationTurn(worldState WorldState, actors Actors, client *openai.Client) ([]ActorAction, WorldState, error) {
 	log.Printf("[RunSimulationTurn] Starting simulation turn with %d actors", len(actors.Actors))
 
 	var actions []ActorAction
@@ -276,13 +282,13 @@ func RunSimulationTurn(worldState WorldState, actors Actors, token string) ([]Ac
 	// Each actor observes and acts
 	for _, actor := range actors.Actors {
 		// Filter world state for this actor
-		actorView, err := FilterWorldStateForActor(worldState, actor, token)
+		actorView, err := FilterWorldStateForActor(worldState, actor, client)
 		if err != nil {
 			return nil, worldState, fmt.Errorf("failed to filter world state for %s: %v", actor.Name, err)
 		}
 
 		// Actor takes action based on their view
-		action, err := ActorTakesAction(actor, actorView, token)
+		action, err := ActorTakesAction(actor, actorView, client)
 		if err != nil {
 			return nil, worldState, fmt.Errorf("failed to get action for %s: %v", actor.Name, err)
 		}
@@ -291,7 +297,7 @@ func RunSimulationTurn(worldState WorldState, actors Actors, token string) ([]Ac
 	}
 
 	// Update world state based on actions
-	updatedWorldState, err := UpdateWorldState(worldState, actions, token)
+	updatedWorldState, err := UpdateWorldState(worldState, actions, client)
 	if err != nil {
 		return actions, worldState, fmt.Errorf("failed to update world state: %v", err)
 	}
@@ -301,7 +307,7 @@ func RunSimulationTurn(worldState WorldState, actors Actors, token string) ([]Ac
 }
 
 // UpdateWorldState updates the world state based on the actions taken by actors
-func UpdateWorldState(worldState WorldState, actions []ActorAction, token string) (WorldState, error) {
+func UpdateWorldState(worldState WorldState, actions []ActorAction, client *openai.Client) (WorldState, error) {
 	log.Printf("[UpdateWorldState] Updating world state based on %d actions", len(actions))
 
 	worldStateJSON, err := json.Marshal(worldState)
@@ -334,7 +340,7 @@ Update the world state to reflect the consequences of these actions. Return the 
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, token: token}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5, client: client}, openai_schema)
 	if err != nil {
 		return WorldState{}, err
 	}
@@ -349,7 +355,7 @@ Update the world state to reflect the consequences of these actions. Return the 
 }
 
 // AnswerSummarizationQuestion answers a specific question about the final state of the simulation
-func AnswerSummarizationQuestion(question string, worldState WorldState, allActions [][]ActorAction, token string) (string, error) {
+func AnswerSummarizationQuestion(question string, worldState WorldState, allActions [][]ActorAction, client *openai.Client) (string, error) {
 	log.Printf("[AnswerSummarizationQuestion] Answering question: %s", question)
 
 	worldStateJSON, err := json.Marshal(worldState)
@@ -368,9 +374,9 @@ And this history of all actions taken across turns: %s
 
 Please answer this question: %s
 
-Provide a clear, evidence-based answer referencing specific events and actions from the simulation.`, string(worldStateJSON), string(allActionsJSON), question)
+Provide a clear answer, referencing specific events and actions from the simulation.`, string(worldStateJSON), string(allActionsJSON), question)
 
-	answer, err := fetchOpenAIAnswer(OpenAIRequest{prompt: prompt, model: GPT5, token: token})
+	answer, err := fetchOpenAIAnswer(OpenAIRequest{prompt: prompt, model: GPT5, client: client})
 	if err != nil {
 		return "", err
 	}
@@ -386,11 +392,14 @@ func main(){
 	}
 	openaiToken := os.Getenv("OPENAI_API_KEY")
 
+	// Create OpenAI client once for reuse
+	client := openai.NewClient(openaiToken)
+
 	situation_description := "The Bank of Japan is considering what to do about rates. I am curious about how to balance the central bank of Japan changing rates with the needs of the Japanese people, the PM, but also possible external pressure to not unwind the Japanese carry trade."
 
 	// Step 1: Get initial actors
 	fmt.Println("\n=== STEP 1: Generating Actors ===")
-	actors, err := GetActors(situation_description, openaiToken)
+	actors, err := GetActors(situation_description, client)
 	if err != nil {
 		log.Fatalf("Failed to get actors: %v", err)
 	}
@@ -399,11 +408,11 @@ func main(){
 
 	// Step 2: Optionally adjust actors based on external information (skipping for MVP demo)
 	// external_info := "The US Federal Reserve has expressed concerns about global financial stability"
-	// actors, _ = AdjustActors(actors, external_info, openaiToken)
+	// actors, _ = AdjustActors(actors, external_info, client)
 
 	// Step 3: Summarize initial world state
 	fmt.Println("\n=== STEP 2: Initial World State ===")
-	worldState, err := SummarizeWorldState(situation_description, actors, openaiToken)
+	worldState, err := SummarizeWorldState(situation_description, actors, client)
 	if err != nil {
 		log.Fatalf("Failed to summarize world state: %v", err)
 	}
@@ -417,7 +426,7 @@ func main(){
 	for turn := 1; turn <= numTurns; turn++ {
 		fmt.Printf("\n=== STEP 3.%d: Simulation Turn %d ===\n", turn+2, turn)
 
-		actions, newWorldState, err := RunSimulationTurn(worldState, actors, openaiToken)
+		actions, newWorldState, err := RunSimulationTurn(worldState, actors, client)
 		if err != nil {
 			log.Fatalf("Failed to run simulation turn %d: %v", turn, err)
 		}
@@ -439,7 +448,7 @@ func main(){
 	// Step 5: Answer summarization question
 	fmt.Println("\n=== STEP 5: Final Summarization ===")
 	question := "Did the Bank of Japan raise rates, potentially unwinding the Japanese carry trade?"
-	answer, err := AnswerSummarizationQuestion(question, worldState, allActions, openaiToken)
+	answer, err := AnswerSummarizationQuestion(question, worldState, allActions, client)
 	if err != nil {
 		log.Fatalf("Failed to answer summarization question: %v", err)
 	}

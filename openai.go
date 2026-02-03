@@ -19,13 +19,12 @@ var GPT5 string = "gpt-5"
 type OpenAIRequest struct {
 	prompt string
 	model  string
-	token  string
+	client *openai.Client
 }
 
 func fetchOpenAIAnswer(req OpenAIRequest) (string, error) {
 
-	client := openai.NewClient(req.token)
-	resp, err := client.CreateChatCompletion(
+	resp, err := req.client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
 			Model: req.model, // openai.GPT4TurboPreview, // openai.GPT3Dot5Turbo // "gpt-3.5-turbo-0125"
@@ -49,11 +48,10 @@ func fetchOpenAIAnswer(req OpenAIRequest) (string, error) {
 }
 
 func fetchOpenAIAnswerJSON(req OpenAIRequest, schema openai.ChatCompletionResponseFormatJSONSchema) (string, error) {
-	log.Printf("[OPENAI] Creating OpenAI client and making JSON request with model: %s", req.model)
+	log.Printf("[OPENAI] Making JSON request with model: %s", req.model)
 	log.Printf("[OPENAI] Prompt length: %d characters", len(req.prompt))
-	
-	client := openai.NewClient(req.token)
-	resp, err := client.CreateChatCompletion(
+
+	resp, err := req.client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
 			Model: req.model,
