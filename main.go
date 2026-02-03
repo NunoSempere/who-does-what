@@ -10,15 +10,14 @@ import (
 	jsonschema "github.com/sashabaranov/go-openai/jsonschema"
 )
 
-/*
 
 type Actor struct {
-	name string
-	goals string
+	Name string `json:"name"`
+	Goals string `json:"goals"`
 }
 type Actors struct {
-	actors []Actor
-	observations string
+	Actors []Actor
+	Observations string `json:"observations"`
 }
 
 func GetActors(situation_description string, token string) (Actors, error){
@@ -79,7 +78,7 @@ func main(){
 	}
 }
 
-*/
+/*
 
 type SummaryBox struct {
 	Summary string  `json:"summary"`
@@ -134,3 +133,4 @@ func main(){
 
 	}
 }
+*/
