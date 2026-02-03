@@ -2,6 +2,8 @@
 
 A scenario simulation tool that creates actors with goals and powers, simulates their interactions over multiple turns, and answers questions about the outcomes.
 
+![](./architecture.png)
+
 ## Installation
 
 ```bash
@@ -10,9 +12,15 @@ go build -o who-does-what
 
 ## Usage
 
+```
+./who-does-what # Run with default scenario
+./who-does-what --interactive
+./who-does-what --num-simulations 10
+```
+
 ### Default Mode (Single Simulation)
 
-Run a single simulation with the default scenario:
+Run a single simulation with the default scenario: whether the Bank of Japan will change rates such that the Japan carry trade unwinds.
 
 ```bash
 ./who-does-what
@@ -31,6 +39,7 @@ Run an interactive session where you can:
 ```
 
 The interactive mode will:
+
 1. Ask for a scenario description
 2. Ask for the number of turns
 3. Ask for a summarization question
@@ -82,7 +91,7 @@ multi_sim_<timestamp>/
 
 **Note:** In this mode, you cannot edit actors or actions between runs. This mode is designed for statistical analysis, not interactive editing.
 
-**Performance:** Simulations run in parallel, significantly reducing total runtime. For example, 10 simulations run in roughly the time it takes to complete the slowest simulation, rather than 10x the time of a single simulation.
+**Parallelism:** Simulations run in parallel, significantly reducing total runtime. For example, 10 simulations run in roughly the time it takes to complete the slowest simulation, rather than 10x the time of a single simulation.
 
 **Logging:** Each simulation writes its detailed output (actors, world state, actions) to its own `simulation.log` file. This allows parallel execution without log interleaving. Progress updates ("Starting simulation N", "Completed simulation N") are shown on the console.
 

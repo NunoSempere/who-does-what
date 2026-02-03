@@ -35,3 +35,13 @@ Eventually, we will want to repeat the above many times in order to get a view o
 ## Step 4: Website
 
 Eventually we will want to create a website with similar capabilities.
+
+## Notes to self
+
+- Actors are biased towards taking action, even when they wouldn't necessarily have fast OODA loops
+- Unclear meaning of time
+- No way to incorporate external information into digest yet.
+  - Use AskNews
+- Ask about more information at the beginning
+- Need to use this a bit more in order to calibrate it
+- Neat as a minimalist piece of software
