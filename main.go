@@ -72,7 +72,7 @@ func main(){
 	}
   openaiToken := os.Getenv("OPENAI_API_KEY")
 
-  situation_description := "The Bank of Japan is considering what to do about rates"
+  situation_description := "The Bank of Japan is considering what to do about rates. I am curious about how to balance the central bank of Japan changing rates with the needs of the Japanese people, the PM, but also possible external pressure to not unwind the Japanese carry trade."
 	if actors, err := GetActors(situation_description, openaiToken); err == nil {
 		pretty_actors, err := json.MarshalIndent(actors, "", "  ")
 		if err == nil {
