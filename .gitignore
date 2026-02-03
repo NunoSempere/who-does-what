@@ -1,1 +1,3 @@
-multi_sim*
+*multi_sim*
+.env
+out/

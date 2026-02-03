@@ -918,16 +918,7 @@ func runMultipleSimulations(numSimulations int, client *openai.Client) error {
 	// Print one-paragraph summary for each simulation
 	fmt.Printf("\n=== INDIVIDUAL SIMULATION SUMMARIES ===\n")
 	for i, result := range results {
-		yesNoStr := "No"
-		if result.YesNo {
-			yesNoStr = "Yes"
-		}
-		// Truncate answer to ~200 characters for summary
-		summary := result.Answer
-		if len(summary) > 200 {
-			summary = summary[:200] + "..."
-		}
-		fmt.Printf("\nSimulation %d: %s - %s\n", i+1, yesNoStr, summary)
+		fmt.Printf("\nSimulation %d: %t - %s\n", i+1, result.YesNo, result.Answer)
 	}
 
 	return nil
