@@ -18,6 +18,7 @@ import (
 )
 
 var verbose bool
+var multiline bool
 
 // Logger interface for simulation logging
 type SimLogger interface {
@@ -637,19 +638,15 @@ func runInteractiveSimulation(client *openai.Client) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Get scenario from user
-	fmt.Print("\nEnter the scenario description: ")
-	situationDescription, _ := reader.ReadString('\n')
-	situationDescription = strings.TrimSpace(situationDescription)
+	situationDescription := readInput("Enter the scenario description")
 
 	// Get number of turns
-	fmt.Print("Enter number of turns to simulate: ")
+	fmt.Print("\nEnter number of turns to simulate: ")
 	var numTurns int
 	fmt.Scanf("%d\n", &numTurns)
 
 	// Get summarization question
-	fmt.Print("Enter the question to answer at the end: ")
-	question, _ := reader.ReadString('\n')
-	question = strings.TrimSpace(question)
+	question := readInput("Enter the question to answer at the end")
 
 	// Create session directory
 	sessionDir := fmt.Sprintf("session_%d", os.Getpid())
@@ -774,23 +771,40 @@ func runInteractiveSimulation(client *openai.Client) error {
 	return nil
 }
 
-func runMultipleSimulations(numSimulations int, client *openai.Client) error {
+func readInput(prompt string) string {
 	reader := bufio.NewReader(os.Stdin)
 
+	if multiline {
+		fmt.Printf("\n%s (enter 'END' on a new line when done):\n", prompt)
+		var lines []string
+		for {
+			line, _ := reader.ReadString('\n')
+			line = strings.TrimRight(line, "\n\r")
+
+			if line == "END" {
+				break
+			}
+			lines = append(lines, line)
+		}
+		return strings.TrimSpace(strings.Join(lines, "\n"))
+	} else {
+		fmt.Printf("\n%s: ", prompt)
+		line, _ := reader.ReadString('\n')
+		return strings.TrimSpace(line)
+	}
+}
+
+func runMultipleSimulations(numSimulations int, client *openai.Client) error {
 	// Get scenario from user
-	fmt.Print("\nEnter the scenario description: ")
-	situationDescription, _ := reader.ReadString('\n')
-	situationDescription = strings.TrimSpace(situationDescription)
+	situationDescription := readInput("Enter the scenario description")
 
 	// Get number of turns
-	fmt.Print("Enter number of turns to simulate: ")
+	fmt.Print("\nEnter number of turns to simulate: ")
 	var numTurns int
 	fmt.Scanf("%d\n", &numTurns)
 
 	// Get summarization question
-	fmt.Print("Enter the question to answer at the end: ")
-	question, _ := reader.ReadString('\n')
-	question = strings.TrimSpace(question)
+	question := readInput("Enter the question to answer at the end")
 
 	// Create base directory for all simulations
 	timestamp := time.Now().Format("20060102_150405")
@@ -929,9 +943,11 @@ func main() {
 	interactive := flag.Bool("interactive", false, "Run in interactive mode")
 	numSimulations := flag.Int("num-simulations", 0, "Run multiple simulations and aggregate results")
 	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging")
+	multilineFlag := flag.Bool("multiline", false, "Enable multiline input for scenarios and questions")
 	flag.Parse()
 
 	verbose = *verboseFlag
+	multiline = *multilineFlag
 
 	if err := godotenv.Load(".env"); err != nil {
 		if verbose {

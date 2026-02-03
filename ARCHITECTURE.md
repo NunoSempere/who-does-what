@@ -109,6 +109,8 @@ Runs a single simulation with a hardcoded scenario. Useful for quick testing and
 ### Interactive Mode (`--interactive`)
 Provides a full interactive experience:
 - User defines the scenario, number of turns, and question
+- By default, input is single-line (press Enter to submit)
+- With `--multiline` flag: Users can enter multiple lines and type `END` on a new line to finish
 - Creates a session directory with all simulation data
 - Actors are saved to individual JSON files for editing
 - User can review and edit actors before simulation starts
@@ -135,6 +137,8 @@ session_<pid>/
 ### Multiple Simulations Mode (`--num-simulations N`)
 Runs N independent simulations **in parallel** with the same scenario and aggregates results:
 - User is prompted for scenario, number of turns, and question
+- By default, input is single-line (press Enter to submit)
+- With `--multiline` flag: Users can enter multiple lines and type `END` on a new line to finish
 - Creates a `multi_sim_<timestamp>` directory to store all results
 - Saves scenario information to `scenario.json` in the base directory
 - All simulations run in parallel using goroutines for maximum performance
@@ -190,6 +194,14 @@ Controls logging verbosity:
 - When disabled (default): Only shows meaningful simulation output (actor actions, world state, results)
 - Can be combined with any execution mode
 - Useful for debugging issues with API calls or understanding internal operations
+
+### Multiline Input Mode (`--multiline`)
+Controls how user input is collected:
+- When disabled (default): Single-line input, press Enter to submit
+- When enabled: Multi-line input, type `END` on a new line to finish
+- Applies to scenario descriptions and questions
+- Useful for complex, multi-paragraph scenarios
+- Can be combined with `--interactive` or `--num-simulations`
 
 ## Design Principles
 

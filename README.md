@@ -1,8 +1,16 @@
 # Who Does What
 
-A scenario simulation tool that creates actors with goals and powers, simulates their interactions over multiple turns, and answers questions about the outcomes.
+Given an scenario, create actors with goals and powers, simulate their interactions over multiple turns, and answer questions about the outcomes.
+
+Here is 
 
 ![](./architecture.png)
+
+Here is an example output, on whether Trump will invoke the Insurrection Act.
+
+```
+Simulation 9: false - No. In the provided final world state and full action history, the Trump administration escalates immigration enforcement through a declared southern border emergency; expanded expedited removal; mass removal flights; nationwide Homeland Security Task Forces; a sharp expansion of 287(g) agreements; OBBBA-funded detention/agent/wall buildouts; CBP interior support deployments; and multiple White House/DHS directives that centralize weekly performance targets, field-office scorecards, and rapid resource redeployments. The legal/governance posture described focuses on DHS operational orders, emergency/rapid procurement, interagency task-force operations, and DOJ/OSG litigation to narrow injunctions and seek Supreme Court review. There is no event or action indicating invocation of the Insurrection Act, nor any described domestic deployment under that statute; the domestic surges (e.g., the Minneapolis deployment of ~3,000 agents) are framed as DHS/ICE/CBP and partner-agency operations, not Insurrection Act authorities.
+```
 
 ## Installation
 
@@ -19,10 +27,14 @@ go build -o who-does-what
 ## Usage
 
 ```
-./who-does-what # Run with default scenario
-./who-does-what --interactive
-./who-does-what --num-simulations 10
+./who-does-what                                  # Run with default scenario
+./who-does-what --interactive                    # Interactive mode with single-line input
+./who-does-what --interactive --multiline        # Interactive mode, specify scenario in more depth
+./who-does-what --num-simulations 10             # Run multiple simulations
+./who-does-what --num-simulations 10 --multiline # Run multiple simulations, specify scenario in more depth
 ```
+
+This tool works better if the initial scenario is well specified and has accurate and up-to-date info, e.g., from perplexity.
 
 ### Default Mode (Single Simulation)
 
@@ -46,9 +58,9 @@ Run an interactive session where you can:
 
 The interactive mode will:
 
-1. Ask for a scenario description
+1. Ask for a scenario description (single line by default)
 2. Ask for the number of turns
-3. Ask for a summarization question
+3. Ask for a summarization question (single line by default)
 4. Create a `session_<pid>` directory
 5. Generate actors and save them to `actors/` directory
 6. Allow you to edit actor files
@@ -64,7 +76,7 @@ Run multiple simulations to get aggregate statistics:
 ```
 
 This will:
-1. Prompt for scenario description, number of turns, and question
+1. Prompt for scenario description (single line, or multiline with `--multiline` flag), number of turns, and question
 2. Create a `multi_sim_<timestamp>` directory
 3. Run N independent simulations **in parallel** with the same scenario
 4. Save each simulation to `simulation_N/` subdirectory with:
@@ -102,6 +114,35 @@ multi_sim_<timestamp>/
 **Logging:** Each simulation writes its detailed output (actors, world state, actions) to its own `simulation.log` file. This allows parallel execution without log interleaving. Progress updates ("Starting simulation N", "Completed simulation N") are shown on the console.
 
 **Output:** After all simulations complete, aggregate statistics and one-paragraph summaries of each simulation are displayed.
+
+### Multiline Input Mode
+
+Enable multiline input for scenarios and questions:
+
+```bash
+./who-does-what --interactive --multiline
+./who-does-what --num-simulations 10 --multiline
+```
+
+By default, input is single-line (press Enter to submit). With the `--multiline` flag:
+- You can enter multiple lines for scenario descriptions and questions
+- Type `END` on a new line by itself to finish your input
+- Useful for complex, multi-paragraph scenarios
+
+Example with `--multiline`:
+```
+Enter the scenario description (enter 'END' on a new line when done):
+The European Central Bank is considering whether to raise interest rates.
+Key factors include inflation, unemployment, and economic growth.
+There are competing pressures from different member states.
+END
+
+Enter number of turns to simulate: 3
+
+Enter the question to answer at the end (enter 'END' on a new line when done):
+Will the ECB raise interest rates by at least 0.5%?
+END
+```
 
 ### Verbose Mode
 
@@ -165,6 +206,9 @@ The simulation follows these steps:
 ./who-does-what --interactive
 # Follow the prompts to define your scenario
 # Edit actor files and review turn data
+
+# For complex multi-paragraph scenarios, use --multiline flag
+./who-does-what --interactive --multiline
 ```
 
 ### Statistical analysis
@@ -198,6 +242,15 @@ Simulation 2: No - The Bank of Japan maintained its current policy stance, citin
 ./who-does-what --verbose
 ./who-does-what --num-simulations 10 --verbose
 # See detailed HTTP requests, schema generation, and internal operations
+```
+
+### Combining flags
+```bash
+# Interactive mode with multiline input and verbose logging
+./who-does-what --interactive --multiline --verbose
+
+# Multiple simulations with multiline input
+./who-does-what --num-simulations 50 --multiline
 ```
 
 ## Configuration

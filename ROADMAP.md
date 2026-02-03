@@ -42,6 +42,8 @@ Eventually we will want to create a website with similar capabilities.
 - Unclear meaning of time
 - No way to incorporate external information into digest yet.
   - Use AskNews
+  - Perplexity is a good start, could integrate it more
 - Ask about more information at the beginning
 - Need to use this a bit more in order to calibrate it
 - Neat as a minimalist piece of software
+- Would be good to be able to ask more than one question at the end
