@@ -26,6 +26,9 @@ Eventually, we will want to repeat the above many times in order to get a view o
 
 - [x] Summarize each simulation run
 - [x] Aggregate them using some summary statistic (now: in what % of worlds does the Japanese central bank raise rates, thus unwinding the Japanese carry trade?)
+- [x] Run simulations in parallel, writting simulation-specific logs to their own folder, but a one paragraph summary of each simulation result to stdout after the aggregate statistics
+- [x] Retry failing OpenAI requests with an exponential backoff, and stop at 5 tries.
+- [x] Save the questions to the multiple simulations folder as well.
 
 **Usage:** `./who-does-what --num-simulations 10`
 

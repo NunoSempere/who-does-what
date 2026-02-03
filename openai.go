@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"log"
+	"time"
+	"fmt"
 
 	openai "github.com/sashabaranov/go-openai"
 	// jsonschema "github.com/sashabaranov/go-openai/jsonschema"
@@ -23,60 +25,105 @@ type OpenAIRequest struct {
 	client *openai.Client
 }
 
-func fetchOpenAIAnswer(req OpenAIRequest) (string, error) {
+func retryWithBackoff(operation func() error, maxRetries int, verbose bool) error {
+	var err error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err = operation()
+		if err == nil {
+			return nil
+		}
 
-	resp, err := req.client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: req.model, // openai.GPT4TurboPreview, // openai.GPT3Dot5Turbo // "gpt-3.5-turbo-0125"
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: req.prompt,
-				},
-			},
-		},
-	)
-
-	if err != nil {
-		log.Printf("ChatCompletion error: %v\n", err)
-		return "", err
+		if attempt < maxRetries {
+			backoffTime := time.Duration(1<<uint(attempt-1)) * time.Second // 1s, 2s, 4s, 8s, 16s
+			if verbose {
+				log.Printf("[RETRY] Attempt %d/%d failed: %v. Retrying in %v...", attempt, maxRetries, err, backoffTime)
+			}
+			time.Sleep(backoffTime)
+		}
 	}
-
-	result := resp.Choices[0].Message.Content
-	return result, nil
-
+	return fmt.Errorf("failed after %d attempts: %v", maxRetries, err)
 }
 
-func fetchOpenAIAnswerJSON(req OpenAIRequest, schema openai.ChatCompletionResponseFormatJSONSchema) (string, error) {
-	log.Printf("[OPENAI] Making JSON request with model: %s", req.model)
-	log.Printf("[OPENAI] Prompt length: %d characters", len(req.prompt))
+func fetchOpenAIAnswer(req OpenAIRequest, verbose bool) (string, error) {
+	var result string
 
-	resp, err := req.client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: req.model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: req.prompt,
+	err := retryWithBackoff(func() error {
+		resp, err := req.client.CreateChatCompletion(
+			context.Background(),
+			openai.ChatCompletionRequest{
+				Model: req.model,
+				Messages: []openai.ChatCompletionMessage{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: req.prompt,
+					},
 				},
 			},
-			ResponseFormat: &openai.ChatCompletionResponseFormat{
-				Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-				JSONSchema: &schema,
-			},
-		},
-	)
+		)
+
+		if err != nil {
+			return err
+		}
+
+		result = resp.Choices[0].Message.Content
+		return nil
+	}, 5, verbose)
 
 	if err != nil {
-		log.Printf("[OPENAI] ChatCompletion error: %v\n", err)
+		if verbose {
+			log.Printf("ChatCompletion error: %v\n", err)
+		}
 		return "", err
 	}
 
-	log.Printf("[OPENAI] ChatCompletion successful")
-	result := resp.Choices[0].Message.Content
-	log.Printf("[OPENAI] Response content length: %d characters", len(result))
+	return result, nil
+}
+
+func fetchOpenAIAnswerJSON(req OpenAIRequest, schema openai.ChatCompletionResponseFormatJSONSchema, verbose bool) (string, error) {
+	if verbose {
+		log.Printf("[OPENAI] Making JSON request with model: %s", req.model)
+		log.Printf("[OPENAI] Prompt length: %d characters", len(req.prompt))
+	}
+
+	var result string
+
+	err := retryWithBackoff(func() error {
+		resp, err := req.client.CreateChatCompletion(
+			context.Background(),
+			openai.ChatCompletionRequest{
+				Model: req.model,
+				Messages: []openai.ChatCompletionMessage{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: req.prompt,
+					},
+				},
+				ResponseFormat: &openai.ChatCompletionResponseFormat{
+					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+					JSONSchema: &schema,
+				},
+			},
+		)
+
+		if err != nil {
+			return err
+		}
+
+		result = resp.Choices[0].Message.Content
+		return nil
+	}, 5, verbose)
+
+	if err != nil {
+		if verbose {
+			log.Printf("[OPENAI] ChatCompletion error: %v\n", err)
+		}
+		return "", err
+	}
+
+	if verbose {
+		log.Printf("[OPENAI] ChatCompletion successful")
+		log.Printf("[OPENAI] Response content length: %d characters", len(result))
+	}
 	return result, nil
 }
 

@@ -133,13 +133,42 @@ session_<pid>/
 ```
 
 ### Multiple Simulations Mode (`--num-simulations N`)
-Runs N independent simulations with the same scenario and aggregates results:
+Runs N independent simulations **in parallel** with the same scenario and aggregates results:
 - User is prompted for scenario, number of turns, and question
+- Creates a `multi_sim_<timestamp>` directory to store all results
+- Saves scenario information to `scenario.json` in the base directory
+- All simulations run in parallel using goroutines for maximum performance
 - Each simulation runs independently with the same parameters
-- Actors and actions are NOT saved to files (no editing capability)
+- Each simulation is saved to its own `simulation_N/` subdirectory with:
+  - `actors.json` - Generated actors for this simulation
+  - `turn_N/actions.json` - Actions taken in each turn
+  - `turn_N/world_state.json` - World state after each turn
+  - `result.json` - Final yes/no answer and explanation
+  - `simulation.log` - Complete detailed log of the simulation
+- **File-based logging approach**: Each simulation uses a dedicated `FileLogger` that writes to its own log file. This prevents log interleaving and allows true parallel execution. Progress updates ("Starting/Completed simulation N") are printed to console via stdout.
+- Aggregate results saved to `aggregate_results.json`
 - Yes/No answers are collected
 - Aggregate statistics are displayed (percentage breakdown)
+- One-paragraph summaries of each simulation are displayed after aggregate statistics
 - Useful for understanding probability distributions of outcomes
+
+Directory structure:
+```
+multi_sim_20260203_143022/
+├── scenario.json              # Contains scenario, question, and turn count
+├── simulation_1/
+│   ├── actors.json
+│   ├── turn_1/
+│   │   ├── actions.json
+│   │   └── world_state.json
+│   ├── turn_2/
+│   │   └── ...
+│   ├── result.json
+│   └── simulation.log        # Detailed log of this simulation
+├── simulation_2/
+│   └── ...
+└── aggregate_results.json
+```
 
 Example output:
 ```
@@ -149,9 +178,18 @@ Total simulations: 100
 Yes count: 73
 No count: 27
 Yes percentage: 73.0%
+
+Results saved to: multi_sim_20260203_143022
 ```
 
 **Note:** The `--interactive` and `--num-simulations` flags are mutually exclusive and cannot be used together.
+
+### Verbose Mode (`--verbose`)
+Controls logging verbosity:
+- When enabled: Shows detailed HTTP requests, schema generation, JSON operations
+- When disabled (default): Only shows meaningful simulation output (actor actions, world state, results)
+- Can be combined with any execution mode
+- Useful for debugging issues with API calls or understanding internal operations
 
 ## Design Principles
 
@@ -173,3 +211,11 @@ All major decisions (actor behavior, world state updates, information filtering)
 
 ### Client Reuse
 A single OpenAI client is created and reused across all API calls for efficiency.
+
+### Retry Logic with Exponential Backoff
+All OpenAI API calls implement automatic retry with exponential backoff:
+- Maximum 5 retry attempts per request
+- Backoff times: 1s, 2s, 4s, 8s, 16s
+- Improves reliability when dealing with transient API errors or rate limits
+- Retry details are logged when `--verbose` flag is enabled
+- Prevents entire simulation runs from failing due to temporary network issues

@@ -12,9 +12,48 @@ import (
 	"strings"
 	"path/filepath"
 	"io/ioutil"
+	"time"
 	openai "github.com/sashabaranov/go-openai"
 	jsonschema "github.com/sashabaranov/go-openai/jsonschema"
 )
+
+var verbose bool
+
+// Logger interface for simulation logging
+type SimLogger interface {
+	Printf(format string, v ...interface{})
+	Println(v ...interface{})
+}
+
+// FileLogger logs to a file
+type FileLogger struct {
+	logger *log.Logger
+}
+
+func NewFileLogger(file *os.File) *FileLogger {
+	return &FileLogger{
+		logger: log.New(file, "", 0),
+	}
+}
+
+func (fl *FileLogger) Printf(format string, v ...interface{}) {
+	fl.logger.Printf(format, v...)
+}
+
+func (fl *FileLogger) Println(v ...interface{}) {
+	fl.logger.Println(v...)
+}
+
+// ConsoleLogger logs to stdout
+type ConsoleLogger struct{}
+
+func (cl *ConsoleLogger) Printf(format string, v ...interface{}) {
+	fmt.Printf(format, v...)
+}
+
+func (cl *ConsoleLogger) Println(v ...interface{}) {
+	fmt.Println(v...)
+}
 
 
 type Actor struct {
@@ -63,38 +102,53 @@ func GetActors(situation_description string, client *openai.Client) (Actors, err
 	var actors Actors
 	schema, err := jsonschema.GenerateSchemaForType(actors)
 	if err != nil {
-		log.Printf("[GetActors] GenerateSchemaForType error: %v", err)
+		if verbose {
+			log.Printf("[GetActors] GenerateSchemaForType error: %v", err)
+		}
 		return Actors{}, fmt.Errorf("schema generation failed: %v", err)
 	}
-	log.Printf("[GetActors] JSON schema generated successfully")
+	if verbose {
+		log.Printf("[GetActors] JSON schema generated successfully")
+	}
 	openai_schema  := openai.ChatCompletionResponseFormatJSONSchema{
 		Name:   "Actors",
 		Schema: schema,
 		Strict: true,
 	}
-	log.Printf("[GetActors] Making OpenAI API call with model: %s", GPT5_2)
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
+	if verbose {
+		log.Printf("[GetActors] Making OpenAI API call with model: %s", GPT5_2)
+	}
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema, verbose)
 	if err != nil {
-		log.Printf("[GetActors] OpenAI API call failed: %v", err)
+		if verbose {
+			log.Printf("[GetActors] OpenAI API call failed: %v", err)
+		}
 		return Actors{}, err
 	}
-	log.Printf("[GetActors] OpenAI API call successful - response length: %d chars", len(openai_json))
+	if verbose {
+		log.Printf("[GetActors] OpenAI API call successful - response length: %d chars", len(openai_json))
+		log.Printf("[GetActors] Unmarshalling OpenAI response JSON")
+	}
 
-	log.Printf("[GetActors] Unmarshalling OpenAI response JSON")
 	err = json.Unmarshal([]byte(openai_json), &actors)
 	if err != nil {
-		log.Printf("[GetActors] Error unmarshalling json: %v", err)
-		log.Printf("[GetActors] Response JSON was: %v", openai_json)
+		if verbose {
+			log.Printf("[GetActors] Error unmarshalling json: %v", err)
+			log.Printf("[GetActors] Response JSON was: %v", openai_json)
+		}
 		return Actors{}, err
 	}
-	log.Printf("[GetActors] JSON unmarshalled successfully")
-	// log.Printf("[GetActors] Actors generation complete: %v", actors)
+	if verbose {
+		log.Printf("[GetActors] JSON unmarshalled successfully")
+	}
 	return actors, nil
 }
 
 // AdjustActors takes existing actors and adjusts them based on external information
 func AdjustActors(actors Actors, external_info string, client *openai.Client) (Actors, error) {
-	log.Printf("[AdjustActors] Adjusting actors based on external information")
+	if verbose {
+		log.Printf("[AdjustActors] Adjusting actors based on external information")
+	}
 
 	actorsJSON, err := json.Marshal(actors)
 	if err != nil {
@@ -119,7 +173,7 @@ Please adjust the actors (their goals, powers, or add/remove actors) based on th
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema, verbose)
 	if err != nil {
 		return Actors{}, err
 	}
@@ -129,13 +183,17 @@ Please adjust the actors (their goals, powers, or add/remove actors) based on th
 		return Actors{}, err
 	}
 
-	log.Printf("[AdjustActors] Actors adjusted successfully")
+	if verbose {
+		log.Printf("[AdjustActors] Actors adjusted successfully")
+	}
 	return adjustedActors, nil
 }
 
 // SummarizeWorldState creates a comprehensive summary of the current state of the world
 func SummarizeWorldState(situation_description string, actors Actors, client *openai.Client) (WorldState, error) {
-	log.Printf("[SummarizeWorldState] Creating world state summary")
+	if verbose {
+		log.Printf("[SummarizeWorldState] Creating world state summary")
+	}
 
 	actorsJSON, err := json.Marshal(actors)
 	if err != nil {
@@ -164,7 +222,7 @@ Format: {"events": ["event 1", "event 2", ...], "description": "overall descript
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema, verbose)
 	if err != nil {
 		return WorldState{}, err
 	}
@@ -174,14 +232,18 @@ Format: {"events": ["event 1", "event 2", ...], "description": "overall descript
 		return WorldState{}, err
 	}
 
-	log.Printf("[SummarizeWorldState] World state summarized successfully")
+	if verbose {
+		log.Printf("[SummarizeWorldState] World state summarized successfully")
+	}
 	return worldState, nil
 }
 
 // FilterWorldStateForActor takes the world state and an actor, and returns only the information
 // that the actor would realistically know based on their position and powers
 func FilterWorldStateForActor(worldState WorldState, actor Actor, client *openai.Client) (ActorView, error) {
-	log.Printf("[FilterWorldStateForActor] Filtering world state for actor: %s", actor.Name)
+	if verbose {
+		log.Printf("[FilterWorldStateForActor] Filtering world state for actor: %s", actor.Name)
+	}
 
 	worldStateJSON, err := json.Marshal(worldState)
 	if err != nil {
@@ -215,7 +277,7 @@ Only include information the actor would actually have access to. Some events mi
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema, verbose)
 	if err != nil {
 		return ActorView{}, err
 	}
@@ -225,13 +287,17 @@ Only include information the actor would actually have access to. Some events mi
 		return ActorView{}, err
 	}
 
-	log.Printf("[FilterWorldStateForActor] World state filtered successfully for %s", actor.Name)
+	if verbose {
+		log.Printf("[FilterWorldStateForActor] World state filtered successfully for %s", actor.Name)
+	}
 	return actorView, nil
 }
 
 // ActorTakesAction has the actor decide what action to take based on their view of the world
-func ActorTakesAction(actor Actor, actorView ActorView, client *openai.Client) (ActorAction, error) {
-	log.Printf("[ActorTakesAction] Getting action for actor: %s", actor.Name)
+func ActorTakesAction(actor Actor, actorView ActorView, client *openai.Client, logger SimLogger) (ActorAction, error) {
+	if verbose {
+		log.Printf("[ActorTakesAction] Getting action for actor: %s", actor.Name)
+	}
 
 	actorJSON, err := json.Marshal(actor)
 	if err != nil {
@@ -264,7 +330,7 @@ What action would this actor take given their goals, powers, and what they know?
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema, verbose)
 	if err != nil {
 		return ActorAction{}, err
 	}
@@ -274,18 +340,24 @@ What action would this actor take given their goals, powers, and what they know?
 		return ActorAction{}, err
 	}
 
-	log.Printf("[ActorTakesAction] Action determined for %s", actor.Name)
+	if verbose {
+		log.Printf("[ActorTakesAction] Action determined for %s", actor.Name)
+	}
 
-	// Print the action taken
-	fmt.Printf("\n%s takes action: %s\n", actorAction.ActorName, actorAction.Action)
-	fmt.Printf("Reasoning: %s\n", actorAction.Reasoning)
+	// Print the action taken to the logger
+	if logger != nil {
+		logger.Printf("\n%s takes action: %s\n", actorAction.ActorName, actorAction.Action)
+		logger.Printf("Reasoning: %s\n", actorAction.Reasoning)
+	}
 
 	return actorAction, nil
 }
 
 // RunSimulationTurn runs one turn of the simulation where each actor observes and acts
-func RunSimulationTurn(worldState WorldState, actors Actors, client *openai.Client) ([]ActorAction, WorldState, error) {
-	log.Printf("[RunSimulationTurn] Starting simulation turn with %d actors", len(actors.Actors))
+func RunSimulationTurn(worldState WorldState, actors Actors, client *openai.Client, logger SimLogger) ([]ActorAction, WorldState, error) {
+	if verbose {
+		log.Printf("[RunSimulationTurn] Starting simulation turn with %d actors", len(actors.Actors))
+	}
 
 	// Process each actor in parallel
 	type actorResult struct {
@@ -314,7 +386,7 @@ func RunSimulationTurn(worldState WorldState, actors Actors, client *openai.Clie
 			}
 
 			// Actor takes action based on their view
-			action, err := ActorTakesAction(act, actorView, client)
+			action, err := ActorTakesAction(act, actorView, client, logger)
 			if err != nil {
 				results <- actorResult{
 					err:   fmt.Errorf("failed to get action for %s: %v", act.Name, err),
@@ -351,13 +423,17 @@ func RunSimulationTurn(worldState WorldState, actors Actors, client *openai.Clie
 		return actions, worldState, fmt.Errorf("failed to update world state: %v", err)
 	}
 
-	log.Printf("[RunSimulationTurn] Simulation turn completed")
+	if verbose {
+		log.Printf("[RunSimulationTurn] Simulation turn completed")
+	}
 	return actions, updatedWorldState, nil
 }
 
 // UpdateWorldState updates the world state based on the actions taken by actors
 func UpdateWorldState(worldState WorldState, actions []ActorAction, client *openai.Client) (WorldState, error) {
-	log.Printf("[UpdateWorldState] Updating world state based on %d actions", len(actions))
+	if verbose {
+		log.Printf("[UpdateWorldState] Updating world state based on %d actions", len(actions))
+	}
 
 	worldStateJSON, err := json.Marshal(worldState)
 	if err != nil {
@@ -389,7 +465,7 @@ Update the world state to reflect the consequences of these actions. Return the 
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema, verbose)
 	if err != nil {
 		return WorldState{}, err
 	}
@@ -399,13 +475,17 @@ Update the world state to reflect the consequences of these actions. Return the 
 		return WorldState{}, err
 	}
 
-	log.Printf("[UpdateWorldState] World state updated successfully")
+	if verbose {
+		log.Printf("[UpdateWorldState] World state updated successfully")
+	}
 	return updatedWorldState, nil
 }
 
 // AnswerSummarizationQuestion answers a specific question about the final state of the simulation
 func AnswerSummarizationQuestion(question string, worldState WorldState, allActions [][]ActorAction, client *openai.Client) (string, bool, error) {
-	log.Printf("[AnswerSummarizationQuestion] Answering question: %s", question)
+	if verbose {
+		log.Printf("[AnswerSummarizationQuestion] Answering question: %s", question)
+	}
 
 	worldStateJSON, err := json.Marshal(worldState)
 	if err != nil {
@@ -439,7 +519,7 @@ Provide a JSON response with:
 		Strict: true,
 	}
 
-	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema)
+	openai_json, err := fetchOpenAIAnswerJSON(OpenAIRequest{prompt: prompt, model: GPT5_2, client: client}, openai_schema, verbose)
 	if err != nil {
 		return "", false, err
 	}
@@ -449,7 +529,9 @@ Provide a JSON response with:
 		return "", false, err
 	}
 
-	log.Printf("[AnswerSummarizationQuestion] Question answered successfully")
+	if verbose {
+		log.Printf("[AnswerSummarizationQuestion] Question answered successfully")
+	}
 	return summarizationAnswer.Answer, summarizationAnswer.YesNo, nil
 }
 
@@ -459,32 +541,43 @@ type SimulationResult struct {
 	Answer   string
 }
 
-func runSingleSimulation(situationDescription string, question string, numTurns int, client *openai.Client) (SimulationResult, error) {
+func runSingleSimulation(situationDescription string, question string, numTurns int, client *openai.Client, saveDir string, logger SimLogger) (SimulationResult, error) {
+	// Use console logger if none provided
+	if logger == nil {
+		logger = &ConsoleLogger{}
+	}
+
 	// Step 1: Get initial actors
-	fmt.Println("\n=== Generating Actors ===")
+	logger.Println("\n=== Generating Actors ===")
 	actors, err := GetActors(situationDescription, client)
 	if err != nil {
 		return SimulationResult{}, fmt.Errorf("failed to get actors: %v", err)
 	}
 	pretty_actors, _ := json.MarshalIndent(actors, "", "  ")
-	fmt.Printf("%v\n", string(pretty_actors))
+	logger.Printf("%v\n", string(pretty_actors))
+
+	// Save actors if save directory is provided
+	if saveDir != "" {
+		actorsJSON, _ := json.MarshalIndent(actors, "", "  ")
+		ioutil.WriteFile(filepath.Join(saveDir, "actors.json"), actorsJSON, 0644)
+	}
 
 	// Step 2: Summarize initial world state
-	fmt.Println("\n=== Initial World State ===")
+	logger.Println("\n=== Initial World State ===")
 	worldState, err := SummarizeWorldState(situationDescription, actors, client)
 	if err != nil {
 		return SimulationResult{}, fmt.Errorf("failed to summarize world state: %v", err)
 	}
 	pretty_world, _ := json.MarshalIndent(worldState, "", "  ")
-	fmt.Printf("%v\n", string(pretty_world))
+	logger.Printf("%v\n", string(pretty_world))
 
 	// Step 3: Run simulation turns
 	var allActions [][]ActorAction
 
 	for turn := 1; turn <= numTurns; turn++ {
-		fmt.Printf("\n=== Simulation Turn %d ===\n", turn)
+		logger.Printf("\n=== Simulation Turn %d ===\n", turn)
 
-		actions, newWorldState, err := RunSimulationTurn(worldState, actors, client)
+		actions, newWorldState, err := RunSimulationTurn(worldState, actors, client, logger)
 		if err != nil {
 			return SimulationResult{}, fmt.Errorf("failed to run simulation turn %d: %v", turn, err)
 		}
@@ -492,32 +585,52 @@ func runSingleSimulation(situationDescription string, question string, numTurns 
 		worldState = newWorldState
 		allActions = append(allActions, actions)
 
-		fmt.Printf("\nActions taken in turn %d:\n", turn)
+		logger.Printf("\nActions taken in turn %d:\n", turn)
 		for _, action := range actions {
-			fmt.Printf("\n%s: %s\n", action.ActorName, action.Action)
-			fmt.Printf("Reasoning: %s\n", action.Reasoning)
+			logger.Printf("\n%s: %s\n", action.ActorName, action.Action)
+			logger.Printf("Reasoning: %s\n", action.Reasoning)
 		}
 
-		fmt.Printf("\nUpdated world state:\n")
+		logger.Printf("\nUpdated world state:\n")
 		pretty_world, _ := json.MarshalIndent(worldState, "", "  ")
-		fmt.Printf("%v\n", string(pretty_world))
+		logger.Printf("%v\n", string(pretty_world))
+
+		// Save turn data if save directory is provided
+		if saveDir != "" {
+			turnDir := filepath.Join(saveDir, fmt.Sprintf("turn_%d", turn))
+			os.MkdirAll(turnDir, 0755)
+
+			actionsJSON, _ := json.MarshalIndent(actions, "", "  ")
+			ioutil.WriteFile(filepath.Join(turnDir, "actions.json"), actionsJSON, 0644)
+
+			worldStateJSON, _ := json.MarshalIndent(worldState, "", "  ")
+			ioutil.WriteFile(filepath.Join(turnDir, "world_state.json"), worldStateJSON, 0644)
+		}
 	}
 
 	// Step 4: Answer summarization question
-	fmt.Println("\n=== Final Summarization ===")
+	logger.Println("\n=== Final Summarization ===")
 	answer, yesNo, err := AnswerSummarizationQuestion(question, worldState, allActions, client)
 	if err != nil {
 		return SimulationResult{}, fmt.Errorf("failed to answer summarization question: %v", err)
 	}
-	fmt.Printf("\nQuestion: %s\n", question)
-	fmt.Printf("Yes/No: %t\n", yesNo)
-	fmt.Printf("Answer: %s\n", answer)
+	logger.Printf("\nQuestion: %s\n", question)
+	logger.Printf("Yes/No: %t\n", yesNo)
+	logger.Printf("Answer: %s\n", answer)
 
-	return SimulationResult{
+	result := SimulationResult{
 		Question: question,
 		YesNo:    yesNo,
 		Answer:   answer,
-	}, nil
+	}
+
+	// Save result if save directory is provided
+	if saveDir != "" {
+		resultJSON, _ := json.MarshalIndent(result, "", "  ")
+		ioutil.WriteFile(filepath.Join(saveDir, "result.json"), resultJSON, 0644)
+	}
+
+	return result, nil
 }
 
 func runInteractiveSimulation(client *openai.Client) error {
@@ -611,7 +724,8 @@ func runInteractiveSimulation(client *openai.Client) error {
 
 		fmt.Printf("\n=== Simulation Turn %d ===\n", turn)
 
-		actions, newWorldState, err := RunSimulationTurn(worldState, actors, client)
+		consoleLogger := &ConsoleLogger{}
+		actions, newWorldState, err := RunSimulationTurn(worldState, actors, client, consoleLogger)
 		if err != nil {
 			return fmt.Errorf("failed to run simulation turn %d: %v", turn, err)
 		}
@@ -678,37 +792,143 @@ func runMultipleSimulations(numSimulations int, client *openai.Client) error {
 	question, _ := reader.ReadString('\n')
 	question = strings.TrimSpace(question)
 
-	fmt.Printf("\n=== Running %d Simulations ===\n", numSimulations)
+	// Create base directory for all simulations
+	timestamp := time.Now().Format("20060102_150405")
+	baseDir := fmt.Sprintf("multi_sim_%s", timestamp)
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return fmt.Errorf("failed to create base directory: %v", err)
+	}
+
+	fmt.Printf("\n=== Running %d Simulations in Parallel ===\n", numSimulations)
 	fmt.Printf("Scenario: %s\n", situationDescription)
 	fmt.Printf("Turns: %d\n", numTurns)
 	fmt.Printf("Question: %s\n", question)
+	fmt.Printf("Saving to: %s\n", baseDir)
 
-	results := make([]SimulationResult, numSimulations)
-	yesCount := 0
+	// Save scenario information to base directory
+	scenarioInfo := map[string]interface{}{
+		"scenario": situationDescription,
+		"question": question,
+		"turns":    numTurns,
+	}
+	scenarioJSON, _ := json.MarshalIndent(scenarioInfo, "", "  ")
+	ioutil.WriteFile(filepath.Join(baseDir, "scenario.json"), scenarioJSON, 0644)
+
+	// Run simulations in parallel
+	type simResult struct {
+		index  int
+		result SimulationResult
+		err    error
+	}
+
+	resultsChan := make(chan simResult, numSimulations)
+	var wg sync.WaitGroup
 
 	for i := 0; i < numSimulations; i++ {
-		fmt.Printf("\n\n========== SIMULATION %d/%d ==========\n", i+1, numSimulations)
+		wg.Add(1)
+		go func(simIndex int) {
+			defer wg.Done()
 
-		result, err := runSingleSimulation(situationDescription, question, numTurns, client)
-		if err != nil {
-			return fmt.Errorf("simulation %d failed: %v", i+1, err)
+			fmt.Printf("Starting simulation %d/%d...\n", simIndex+1, numSimulations)
+
+			// Create directory for this simulation
+			simDir := filepath.Join(baseDir, fmt.Sprintf("simulation_%d", simIndex+1))
+			if err := os.MkdirAll(simDir, 0755); err != nil {
+				resultsChan <- simResult{
+					index: simIndex,
+					err:   fmt.Errorf("failed to create simulation directory: %v", err),
+				}
+				return
+			}
+
+			// Create log file for this simulation
+			logFile, err := os.Create(filepath.Join(simDir, "simulation.log"))
+			if err != nil {
+				resultsChan <- simResult{
+					index: simIndex,
+					err:   fmt.Errorf("failed to create log file: %v", err),
+				}
+				return
+			}
+			defer logFile.Close()
+
+			// Create file logger for this simulation
+			logger := NewFileLogger(logFile)
+
+			result, err := runSingleSimulation(situationDescription, question, numTurns, client, simDir, logger)
+			if err != nil {
+				resultsChan <- simResult{
+					index: simIndex,
+					err:   fmt.Errorf("simulation failed: %v", err),
+				}
+				return
+			}
+
+			fmt.Printf("Completed simulation %d/%d\n", simIndex+1, numSimulations)
+
+			resultsChan <- simResult{
+				index:  simIndex,
+				result: result,
+			}
+		}(i)
+	}
+
+	// Wait for all simulations to complete
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Collect results
+	results := make([]SimulationResult, numSimulations)
+	yesCount := 0
+	for res := range resultsChan {
+		if res.err != nil {
+			return fmt.Errorf("simulation %d failed: %v", res.index+1, res.err)
 		}
-
-		results[i] = result
-		if result.YesNo {
+		results[res.index] = res.result
+		if res.result.YesNo {
 			yesCount++
 		}
-
-		fmt.Printf("\n========== END SIMULATION %d/%d ==========\n", i+1, numSimulations)
 	}
 
 	// Aggregate results
+	aggregateResult := map[string]interface{}{
+		"question":           question,
+		"total":              numSimulations,
+		"yes_count":          yesCount,
+		"no_count":           numSimulations - yesCount,
+		"yes_percentage":     float64(yesCount) / float64(numSimulations) * 100,
+		"scenario":           situationDescription,
+		"turns":              numTurns,
+		"individual_results": results,
+	}
+
+	aggregateJSON, _ := json.MarshalIndent(aggregateResult, "", "  ")
+	ioutil.WriteFile(filepath.Join(baseDir, "aggregate_results.json"), aggregateJSON, 0644)
+
 	fmt.Printf("\n\n=== AGGREGATE RESULTS ===\n")
 	fmt.Printf("Question: %s\n", question)
 	fmt.Printf("Total simulations: %d\n", numSimulations)
 	fmt.Printf("Yes count: %d\n", yesCount)
 	fmt.Printf("No count: %d\n", numSimulations-yesCount)
 	fmt.Printf("Yes percentage: %.1f%%\n", float64(yesCount)/float64(numSimulations)*100)
+	fmt.Printf("\nResults saved to: %s\n", baseDir)
+
+	// Print one-paragraph summary for each simulation
+	fmt.Printf("\n=== INDIVIDUAL SIMULATION SUMMARIES ===\n")
+	for i, result := range results {
+		yesNoStr := "No"
+		if result.YesNo {
+			yesNoStr = "Yes"
+		}
+		// Truncate answer to ~200 characters for summary
+		summary := result.Answer
+		if len(summary) > 200 {
+			summary = summary[:200] + "..."
+		}
+		fmt.Printf("\nSimulation %d: %s - %s\n", i+1, yesNoStr, summary)
+	}
 
 	return nil
 }
@@ -717,10 +937,15 @@ func main() {
 	// Parse command-line flags
 	interactive := flag.Bool("interactive", false, "Run in interactive mode")
 	numSimulations := flag.Int("num-simulations", 0, "Run multiple simulations and aggregate results")
+	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging")
 	flag.Parse()
 
+	verbose = *verboseFlag
+
 	if err := godotenv.Load(".env"); err != nil {
-		log.Printf("Warning: Error loading .env file: %v", err)
+		if verbose {
+			log.Printf("Warning: Error loading .env file: %v", err)
+		}
 	}
 	openaiToken := os.Getenv("OPENAI_API_KEY")
 
@@ -747,7 +972,7 @@ func main() {
 		question := "Did the Bank of Japan raise rates, potentially unwinding the Japanese carry trade?"
 		numTurns := 2
 
-		_, err := runSingleSimulation(situationDescription, question, numTurns, client)
+		_, err := runSingleSimulation(situationDescription, question, numTurns, client, "", nil)
 		if err != nil {
 			log.Fatalf("Simulation failed: %v", err)
 		}
