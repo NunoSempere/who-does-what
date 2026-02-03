@@ -14,6 +14,7 @@ import (
 type Actor struct {
 	Name string `json:"name"`
 	Goals string `json:"goals"`
+	Powers string `json:"powers"`
 }
 type Actors struct {
 	Actors []Actor
@@ -24,8 +25,8 @@ func GetActors(situation_description string, token string) (Actors, error){
 	prompt := `Provide a list of the relevant actors and their goals as a JSON object \
 	{
 		actors: [
-			{"name": "Name 1", "goals": "Description of goals", 
-			{"name": "Name 2", "goals": "Description of goals 2"},
+		{"name": "Name 1", "goals": "Description of goals", "powers": "Formal and informal powers"}
+		{"name": "Name 2", "goals": "Description of goals 2", "powers": "Formal and informal powers"},
 	  	...
 		],
 		observations: "any notes"
@@ -60,7 +61,7 @@ func GetActors(situation_description string, token string) (Actors, error){
 		return Actors{}, err
 	}
 	log.Printf("[GetActors] JSON unmarshalled successfully")
-	log.Printf("[GetActors] Actors generation complete: %v", actors)
+	// log.Printf("[GetActors] Actors generation complete: %v", actors)
 	return actors, nil
 }
 
@@ -73,8 +74,10 @@ func main(){
 
   situation_description := "The Bank of Japan is considering what to do about rates"
 	if actors, err := GetActors(situation_description, openaiToken); err == nil {
-		fmt.Printf("%v", actors)
-
+		pretty_actors, err := json.MarshalIndent(actors, "", "  ")
+		if err == nil {
+			fmt.Printf("%v", pretty_actors)
+		}
 	}
 }
 
