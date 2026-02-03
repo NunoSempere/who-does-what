@@ -2,15 +2,11 @@
 
 Given an scenario, create actors with goals and powers, simulate their interactions over multiple turns, and answer questions about the outcomes.
 
-Here is 
-
 ![](./architecture.png)
 
 Here is an example output, on whether Trump will invoke the Insurrection Act.
 
-```
-Simulation 9: false - No. In the provided final world state and full action history, the Trump administration escalates immigration enforcement through a declared southern border emergency; expanded expedited removal; mass removal flights; nationwide Homeland Security Task Forces; a sharp expansion of 287(g) agreements; OBBBA-funded detention/agent/wall buildouts; CBP interior support deployments; and multiple White House/DHS directives that centralize weekly performance targets, field-office scorecards, and rapid resource redeployments. The legal/governance posture described focuses on DHS operational orders, emergency/rapid procurement, interagency task-force operations, and DOJ/OSG litigation to narrow injunctions and seek Supreme Court review. There is no event or action indicating invocation of the Insurrection Act, nor any described domestic deployment under that statute; the domestic surges (e.g., the Minneapolis deployment of ~3,000 agents) are framed as DHS/ICE/CBP and partner-agency operations, not Insurrection Act authorities.
-```
+> Simulation 9: false - No. In the provided final world state and full action history, the Trump administration escalates immigration enforcement through a declared southern border emergency; expanded expedited removal; mass removal flights; nationwide Homeland Security Task Forces; a sharp expansion of 287(g) agreements; OBBBA-funded detention/agent/wall buildouts; CBP interior support deployments; and multiple White House/DHS directives that centralize weekly performance targets, field-office scorecards, and rapid resource redeployments. The legal/governance posture described focuses on DHS operational orders, emergency/rapid procurement, interagency task-force operations, and DOJ/OSG litigation to narrow injunctions and seek Supreme Court review. There is no event or action indicating invocation of the Insurrection Act, nor any described domestic deployment under that statute; the domestic surges (e.g., the Minneapolis deployment of ~3,000 agents) are framed as DHS/ICE/CBP and partner-agency operations, not Insurrection Act authorities.
 
 ## Installation
 
