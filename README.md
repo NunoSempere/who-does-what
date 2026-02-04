@@ -28,6 +28,7 @@ go build -o who-does-what
 ./who-does-what --interactive --multiline        # Interactive mode, specify scenario in more depth
 ./who-does-what --num-simulations 10             # Run multiple simulations
 ./who-does-what --num-simulations 10 --multiline # Run multiple simulations, specify scenario in more depth
+./who-does-what --num-simulations 10 --ai-report # Seed scenario with AI Reddit report data
 ```
 
 This tool works better if the initial scenario is well specified and has accurate and up-to-date info, e.g., from perplexity.
@@ -157,6 +158,45 @@ The `--verbose` flag enables detailed logging of:
 - Internal function calls
 
 By default, verbose logging is disabled and only meaningful output (actor actions, world state, results) is shown.
+
+### AI Report Integration
+
+Seed simulations with real-world AI signals from an external API.
+
+> **Note:** This integration expects a specific JSON format (AI Reddit report structure with `report_data.by_country`, severity scores, etc.). See `ai_report.go` for the expected schema.
+
+```bash
+./who-does-what --ai-report --num-simulations 5
+./who-does-what --ai-report --interactive
+```
+
+When `--ai-report` is enabled, the simulation fetches the latest AI signals report and uses it as the scenario - no manual scenario input needed. You only provide the number of turns and the question to answer.
+
+**Setup:**
+
+Add the API URL to your `.env` file:
+```
+AI_REPORT_URL=https://your-api.com/api/v1/ai-daily-reports/latest
+```
+
+**Flags:**
+- `--ai-report`: Enable AI report as scenario source
+- `--ai-report-url <url>`: Override the API URL (instead of using .env)
+- `--min-severity <1-10>`: Filter signals by minimum severity (default: 1, includes all)
+
+**How it works:**
+
+The report data is formatted by country and severity, then passed to the simulation:
+```
+Current AI signals briefing as of 2025-02-04:
+
+## USA (max severity: 7/10)
+- [Severity 7] Policy Shift: Description...
+- [Severity 5] Market Movement: Description...
+
+## Global (max severity: 6/10)
+- [Severity 6] International Development: Description...
+```
 
 ## Important Notes
 
