@@ -637,8 +637,21 @@ func runSingleSimulation(situationDescription string, question string, numTurns 
 func runInteractiveSimulation(client *openai.Client) error {
 	reader := bufio.NewReader(os.Stdin)
 
-	// Get scenario from user
-	situationDescription := readInput("Enter the scenario description")
+	var situationDescription string
+
+	// Get scenario: either from AI report or from user input
+	if aiReportEnabled {
+		fmt.Println("\n=== Fetching AI Reddit Report ===")
+		report, err := FetchAIRedditReport(aiReportURL)
+		if err != nil {
+			return fmt.Errorf("failed to fetch AI Reddit report: %v", err)
+		}
+		situationDescription = FormatAIRedditReportForScenario(report, aiReportMinSeverity)
+		fmt.Printf("Using AI Reddit report dated %s with %d signals as scenario\n",
+			report.ReportDate, report.ReportData.TotalSignals)
+	} else {
+		situationDescription = readInput("Enter the scenario description")
+	}
 
 	// Get number of turns
 	fmt.Print("\nEnter number of turns to simulate: ")
@@ -795,8 +808,21 @@ func readInput(prompt string) string {
 }
 
 func runMultipleSimulations(numSimulations int, client *openai.Client) error {
-	// Get scenario from user
-	situationDescription := readInput("Enter the scenario description")
+	var situationDescription string
+
+	// Get scenario: either from AI report or from user input
+	if aiReportEnabled {
+		fmt.Println("\n=== Fetching AI Reddit Report ===")
+		report, err := FetchAIRedditReport(aiReportURL)
+		if err != nil {
+			return fmt.Errorf("failed to fetch AI Reddit report: %v", err)
+		}
+		situationDescription = FormatAIRedditReportForScenario(report, aiReportMinSeverity)
+		fmt.Printf("Using AI Reddit report dated %s with %d signals as scenario\n",
+			report.ReportDate, report.ReportData.TotalSignals)
+	} else {
+		situationDescription = readInput("Enter the scenario description")
+	}
 
 	// Get number of turns
 	fmt.Print("\nEnter number of turns to simulate: ")
@@ -938,16 +964,26 @@ func runMultipleSimulations(numSimulations int, client *openai.Client) error {
 	return nil
 }
 
+// Global AI report variables set by flags
+var aiReportEnabled bool
+var aiReportURL string
+var aiReportMinSeverity int
+
 func main() {
 	// Parse command-line flags
 	interactive := flag.Bool("interactive", false, "Run in interactive mode")
 	numSimulations := flag.Int("num-simulations", 0, "Run multiple simulations and aggregate results")
 	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging")
 	multilineFlag := flag.Bool("multiline", false, "Enable multiline input for scenarios and questions")
+	aiReportFlag := flag.Bool("ai-report", false, "Seed scenario with latest AI Reddit report")
+	aiReportURLFlag := flag.String("ai-report-url", "", "URL for AI report API (overrides AI_REPORT_URL env var)")
+	aiReportMinSeverityFlag := flag.Int("min-severity", 1, "Minimum severity level for AI signals (1-10)")
 	flag.Parse()
 
 	verbose = *verboseFlag
 	multiline = *multilineFlag
+	aiReportEnabled = *aiReportFlag
+	aiReportMinSeverity = *aiReportMinSeverityFlag
 
 	if err := godotenv.Load(".env"); err != nil {
 		if verbose {
@@ -955,6 +991,13 @@ func main() {
 		}
 	}
 	openaiToken := os.Getenv("OPENAI_API_KEY")
+
+	// Set AI report URL: flag > env var (no default - must be configured)
+	if *aiReportURLFlag != "" {
+		aiReportURL = *aiReportURLFlag
+	} else {
+		aiReportURL = os.Getenv("AI_REPORT_URL")
+	}
 
 	// Create OpenAI client once for reuse
 	client := openai.NewClient(openaiToken)
